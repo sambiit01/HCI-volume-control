@@ -46,8 +46,7 @@ python main.py
 ## Project Structure
 - `main.py`: The core implementation script.
 - `requirements.txt`: Pin-pointed dependencies.
-- `AGENTS.md`: Internal progress tracking log.
-- `.gitignore`: Standard exclusion list for Python projects.
+
 
 ## Technical Details
 - **MediaPipe Version**: `0.10.14` (Pinned for stability on Windows Python 3.12).
