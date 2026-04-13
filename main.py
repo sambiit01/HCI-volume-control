@@ -4,6 +4,35 @@ import mediapipe as mp
 import math
 import numpy as np
 from ctypes import cast, POINTER
+import os
+
+def relu(x):
+    return np.maximum(0, x)
+
+def softmax(x):
+    e_x = np.exp(x - np.max(x, axis=1, keepdims=True))
+    return e_x / np.sum(e_x, axis=1, keepdims=True)
+
+class NumpyMLP:
+    def __init__(self, npz_file):
+        data = np.load(npz_file)
+        self.w1, self.b1 = data['w1'], data['b1']
+        self.w2, self.b2 = data['w2'], data['b2']
+        self.w3, self.b3 = data['w3'], data['b3']
+        
+    def predict(self, x):
+        x = np.array(x)
+        h1 = relu(np.dot(x, self.w1) + self.b1)
+        h2 = relu(np.dot(h1, self.w2) + self.b2)
+        out = softmax(np.dot(h2, self.w3) + self.b3)
+        return out
+
+try:
+    model = NumpyMLP("gesture_weights.npz")
+    print("Loaded Numpy lightweight ML model successfully!")
+except Exception as e:
+    print(f"Could not load ML model: {e}")
+    model = None
 from comtypes import CLSCTX_ALL
 from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
 
@@ -81,11 +110,29 @@ def main():
             volBar = np.interp(length, [50, 150], [400, 150])
             volPer = np.interp(length, [50, 150], [0, 100])
             
-            # Lock toggle feature: raising pinky toggles the lock on or off
-            pinky_tip_y = lmList[20][2]
-            pinky_pip_y = lmList[18][2]
-            # Requires pinky to be noticeably higher than pip, plus a 1-second debounce
-            pinky_is_up = pinky_tip_y < (pinky_pip_y - 20)
+            # Lock toggle feature: dynamically choose between ML Classifier or math heuristic
+            if model is not None:
+                wrist_x = results.multi_hand_landmarks[0].landmark[0].x
+                wrist_y = results.multi_hand_landmarks[0].landmark[0].y
+                features = []
+                for lm in results.multi_hand_landmarks[0].landmark:
+                    features.extend([lm.x - wrist_x, lm.y - wrist_y])
+                prediction = model.predict([features])
+                class_id = np.argmax(prediction[0])
+                
+                pinky_is_up = (class_id == 1)
+                status_text = ["Control", "Lock", "Idle"][class_id]
+                prob = prediction[0][class_id] * 100
+                cv2.putText(img, f"AI: {status_text} ({prob:.1f}%)", (380, 50), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
+                
+                # Show all probabilities for debugging
+                cv2.putText(img, f"C: {prediction[0][0]:.2f} L: {prediction[0][1]:.2f} I: {prediction[0][2]:.2f}", 
+                            (380, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+            else:
+                pinky_tip_y = lmList[20][2]
+                pinky_pip_y = lmList[18][2]
+                pinky_is_up = pinky_tip_y < (pinky_pip_y - 20)
             
             if pinky_is_up and not pinky_was_up:
                 current_time = time.time()
